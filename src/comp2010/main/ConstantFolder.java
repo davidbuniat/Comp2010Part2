@@ -3,18 +3,29 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.Iterator;
 
 import com.sun.org.apache.bcel.internal.classfile.ClassParser;
 import com.sun.org.apache.bcel.internal.classfile.Code;
+import com.sun.org.apache.bcel.internal.classfile.Constant;
 import com.sun.org.apache.bcel.internal.classfile.JavaClass;
 import com.sun.org.apache.bcel.internal.classfile.Method;
+import com.sun.org.apache.bcel.internal.generic.ArithmeticInstruction;
 import com.sun.org.apache.bcel.internal.generic.ClassGen;
 import com.sun.org.apache.bcel.internal.generic.ConstantPoolGen;
+import com.sun.org.apache.bcel.internal.generic.ConstantPushInstruction;
+import com.sun.org.apache.bcel.internal.generic.DADD;
+import com.sun.org.apache.bcel.internal.generic.FADD;
+import com.sun.org.apache.bcel.internal.generic.IADD;
 import com.sun.org.apache.bcel.internal.generic.ICONST;
+import com.sun.org.apache.bcel.internal.generic.InstructionConstants;
 import com.sun.org.apache.bcel.internal.generic.InstructionHandle;
 import com.sun.org.apache.bcel.internal.generic.InstructionList;
+import com.sun.org.apache.bcel.internal.generic.LADD;
+import com.sun.org.apache.bcel.internal.generic.LDC;
 import com.sun.org.apache.bcel.internal.generic.MethodGen;
 import com.sun.org.apache.bcel.internal.generic.TargetLostException;
+import com.sun.org.apache.bcel.internal.util.InstructionFinder;
 
 public class ConstantFolder
 {
@@ -34,7 +45,8 @@ public class ConstantFolder
 			e.printStackTrace();
 		}
 	}
-	
+
+	@SuppressWarnings("unchecked")
 	private void optimizeMethod(ClassGen cgen, ConstantPoolGen cpgen, Method method)
 	{
 		// Get the Code of the method, which is a collection of bytecode instructions
@@ -43,31 +55,21 @@ public class ConstantFolder
 		// Now get the actualy bytecode data in byte array, 
 		// and use it to initialise an InstructionList
 		InstructionList instList = new InstructionList(methodCode.getCode());
+		InstructionFinder ifinder = new InstructionFinder(instList);
+		String constant = "ConstantPushInstruction";
+		String pattern = constant + constant + "ArithmeticInstruction";
+
+		for (Iterator<InstructionHandle[]> iter = ifinder.search(pattern); iter.hasNext();) {
+			InstructionHandle[] instrs = iter.next();
+			Number val0 = getValueFromConstantInstruction(instrs[0], cpgen);
+			Number val1 = getValueFromConstantInstruction(instrs[0], cpgen);
+			Number result = foldConstants(val0, val1, (ArithmeticInstruction) instrs[2].getInstruction());
+
+		}
 
 		// Initialise a method generator with the original method as the baseline	
 		MethodGen methodGen = new MethodGen(method.getAccessFlags(), method.getReturnType(), method.getArgumentTypes(), null, method.getName(), cgen.getClassName(), instList, cpgen);
 
-		// InstructionHandle is a wrapper for actual Instructions
-		for (InstructionHandle handle : instList.getInstructionHandles())
-		{
-			// if the instruction inside is iconst
-			if (handle.getInstruction() instanceof ICONST)
-			{
-				// insert new one with integer 5, and...
-				instList.insert(handle, new ICONST(5));
-				try
-				{
-					// delete the old one
-					instList.delete(handle);
-
-				}
-				catch (TargetLostException e)
-				{
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-		}
 
 		// setPositions(true) checks whether jump handles 
 		// are all within the current method
@@ -83,15 +85,49 @@ public class ConstantFolder
 		cgen.replaceMethod(method, newMethod);
 
 	}
-	
+
+
+	private Number foldConstants(Number val0, Number val1, ArithmeticInstruction op) {
+		if (op instanceof IADD) {
+			return val0.intValue() + val1.intValue();
+		} else if (op instanceof FADD) {
+			return val0.floatValue() + val1.floatValue();
+		} else if (op instanceof DADD) {
+			return val0.doubleValue() + val1.doubleValue();
+		} else if (op instanceof LADD) {
+			return val0.longValue() + val1.doubleValue();
+		}
+		return null;
+
+	}
+
+
+	private Number getValueFromConstantInstruction(InstructionHandle ih, ConstantPoolGen cpgen) {
+		if (ih instanceof ConstantPushInstruction) {
+			return ((ConstantPushInstruction)(ih.getInstruction())).getValue();
+		}  else {
+			return (Number) ((LDC)(ih.getInstruction())).getValue(cpgen);
+		}
+	}
+
+
 	public void optimize()
 	{
-		ClassGen gen = new ClassGen(original);
-		
+		// load the original class into a class generator
+		ClassGen cgen = new ClassGen(original);
+		ConstantPoolGen cpgen = cgen.getConstantPool();
+
 		// Do your optimization here
-		this.optimized = gen.getJavaClass();
+		Method[] methods = cgen.getMethods();
+		for (Method m : methods) {
+			optimizeMethod(cgen, cpgen, m);
+		}
+
+		// we generate a new class with modifications
+		// and store it in a member variable
+		this.optimized = cgen.getJavaClass();
 	}
-	
+
 	public void write(String optimisedFilePath)
 	{
 		this.optimize();
