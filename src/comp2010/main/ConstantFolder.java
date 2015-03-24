@@ -18,12 +18,16 @@ import com.sun.org.apache.bcel.internal.generic.DADD;
 import com.sun.org.apache.bcel.internal.generic.FADD;
 import com.sun.org.apache.bcel.internal.generic.IADD;
 import com.sun.org.apache.bcel.internal.generic.ICONST;
+import com.sun.org.apache.bcel.internal.generic.Instruction;
 import com.sun.org.apache.bcel.internal.generic.InstructionConstants;
+import com.sun.org.apache.bcel.internal.generic.InstructionFactory;
 import com.sun.org.apache.bcel.internal.generic.InstructionHandle;
 import com.sun.org.apache.bcel.internal.generic.InstructionList;
+import com.sun.org.apache.bcel.internal.generic.InstructionTargeter;
 import com.sun.org.apache.bcel.internal.generic.LADD;
 import com.sun.org.apache.bcel.internal.generic.LDC;
 import com.sun.org.apache.bcel.internal.generic.MethodGen;
+import com.sun.org.apache.bcel.internal.generic.PUSH;
 import com.sun.org.apache.bcel.internal.generic.TargetLostException;
 import com.sun.org.apache.bcel.internal.util.InstructionFinder;
 
@@ -58,13 +62,37 @@ public class ConstantFolder
 		InstructionFinder ifinder = new InstructionFinder(instList);
 		String constant = "ConstantPushInstruction";
 		String pattern = constant + constant + "ArithmeticInstruction";
-
+		
+		
 		for (Iterator<InstructionHandle[]> iter = ifinder.search(pattern); iter.hasNext();) {
 			InstructionHandle[] instrs = iter.next();
-			Number val0 = getValueFromConstantInstruction(instrs[0], cpgen);
-			Number val1 = getValueFromConstantInstruction(instrs[0], cpgen);
-			Number result = foldConstants(val0, val1, (ArithmeticInstruction) instrs[2].getInstruction());
+		    
 
+			Number val0 = getValueFromConstantInstruction(instrs[0], cpgen);
+			Number val1 = getValueFromConstantInstruction(instrs[1], cpgen);
+			Number result = foldConstants(val0, val1, (ArithmeticInstruction) instrs[2].getInstruction());
+			
+			//Create Instruction list
+			InstructionFactory f  = new InstructionFactory(cgen);
+			InstructionList    newIL = new InstructionList();
+			
+			newIL.append(f.createConstant(result));
+			
+			//Instruction new instruction before first instruction
+			instList.insert(instrs[0], newIL);
+			
+			//Delete Instructions from first to last
+			try {
+				instList.delete(instrs[0], instrs[2]);
+			} 
+			catch(TargetLostException e) {
+				InstructionHandle[] targets = e.getTargets();
+				for(int i=0; i < targets.length; i++) {
+					InstructionTargeter[] targeters = (InstructionTargeter[]) targets[i].getTargeters();
+					for(int j=0; j < targeters.length; j++)
+						targeters[j].updateTarget(targets[i], instrs[2].getNext());
+				}
+			}
 		}
 
 		// Initialise a method generator with the original method as the baseline	
