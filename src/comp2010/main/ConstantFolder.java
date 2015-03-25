@@ -60,27 +60,33 @@ public class ConstantFolder
 		// and use it to initialise an InstructionList
 		InstructionList instList = new InstructionList(methodCode.getCode());
 		InstructionFinder ifinder = new InstructionFinder(instList);
-		String constant = "ConstantPushInstruction";
-		String pattern = constant + constant + "ArithmeticInstruction";
-		
+		String constant = "(ConstantPushInstruction|LDC) ";
+		String pattern = constant + constant + "ArithmeticInstruction";		
 		
 		for (Iterator<InstructionHandle[]> iter = ifinder.search(pattern); iter.hasNext();) {
 			InstructionHandle[] instrs = iter.next();
-		    
-
+	
 			Number val0 = getValueFromConstantInstruction(instrs[0], cpgen);
 			Number val1 = getValueFromConstantInstruction(instrs[1], cpgen);
 			Number result = foldConstants(val0, val1, (ArithmeticInstruction) instrs[2].getInstruction());
+			
 			
 			//Create Instruction list
 			InstructionFactory f  = new InstructionFactory(cgen);
 			InstructionList    newIL = new InstructionList();
 			
 			newIL.append(f.createConstant(result));
-			
+			/*System.out.println(val0);
+			System.out.println(val1);
+			System.out.println(result);*/
 			//Instruction new instruction before first instruction
-			instList.insert(instrs[0], newIL);
-			
+			System.out.println("Before optimization:");
+			System.out.println(instList);
+
+			instList.insert(instrs[2].getNext(), newIL);
+		
+			System.out.println("Added Instructions:");
+			System.out.println(instList);
 			//Delete Instructions from first to last
 			try {
 				instList.delete(instrs[0], instrs[2]);
@@ -93,10 +99,14 @@ public class ConstantFolder
 						targeters[j].updateTarget(targets[i], instrs[2].getNext());
 				}
 			}
+			System.out.println("Result should be:");
+			System.out.println(instList);
 		}
 
 		// Initialise a method generator with the original method as the baseline	
-		MethodGen methodGen = new MethodGen(method.getAccessFlags(), method.getReturnType(), method.getArgumentTypes(), null, method.getName(), cgen.getClassName(), instList, cpgen);
+		MethodGen methodGen = new MethodGen(method.getAccessFlags(), method.getReturnType(),
+											method.getArgumentTypes(), null, method.getName(),
+											cgen.getClassName(), instList, cpgen);
 
 
 		// setPositions(true) checks whether jump handles 
@@ -150,6 +160,12 @@ public class ConstantFolder
 		for (Method m : methods) {
 			optimizeMethod(cgen, cpgen, m);
 		}
+		
+		
+		for (Method m : cgen.getMethods()) {
+			System.out.println("After optimization:");
+			System.out.println(new InstructionList(m.getCode().getCode()));
+		}
 
 		// we generate a new class with modifications
 		// and store it in a member variable
@@ -158,8 +174,6 @@ public class ConstantFolder
 
 	public void write(String optimisedFilePath)
 	{
-		this.optimize();
-
 		try {
 			FileOutputStream out = new FileOutputStream(new File(optimisedFilePath));
 			this.optimized.dump(out);
