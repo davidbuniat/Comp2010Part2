@@ -3,6 +3,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Iterator;
 
 import com.sun.org.apache.bcel.internal.classfile.ClassParser;
@@ -51,25 +52,16 @@ public class ConstantFolder
 	}
 
 	@SuppressWarnings("unchecked")
-	private void optimizeMethod(ClassGen cgen, ConstantPoolGen cpgen, Method method)
-	{
-		// Get the Code of the method, which is a collection of bytecode instructions
-		Code methodCode = method.getCode();
-
-		// Now get the actualy bytecode data in byte array, 
-		// and use it to initialise an InstructionList
-		InstructionList instList = new InstructionList(methodCode.getCode());
+	private void optimizeConstants(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
 		InstructionFinder ifinder = new InstructionFinder(instList);
 		String constant = "(ConstantPushInstruction|LDC) ";
-		String pattern = constant + constant + "ArithmeticInstruction";		
-		
+		String pattern = constant + constant + "ArithmeticInstruction";
 		for (Iterator<InstructionHandle[]> iter = ifinder.search(pattern); iter.hasNext();) {
 			InstructionHandle[] instrs = iter.next();
 	
 			Number val0 = getValueFromConstantInstruction(instrs[0], cpgen);
 			Number val1 = getValueFromConstantInstruction(instrs[1], cpgen);
 			Number result = foldConstants(val0, val1, (ArithmeticInstruction) instrs[2].getInstruction());
-			
 			
 			//Create Instruction list
 			InstructionFactory f  = new InstructionFactory(cgen);
@@ -102,6 +94,23 @@ public class ConstantFolder
 			System.out.println("Result should be:");
 			System.out.println(instList);
 		}
+	}
+	
+	private void optimizeMethod(ClassGen cgen, ConstantPoolGen cpgen, Method method)
+	{
+		/* TODO: include a boolean flag if anything was changed. If it was,
+		 * recursively run the method again until nothing changes.
+		 */
+		// Get the Code of the method, which is a collection of bytecode instructions
+		Code methodCode = method.getCode();
+
+		// Now get the actualy bytecode data in byte array, 
+		// and use it to initialise an InstructionList
+		InstructionList instList = new InstructionList(methodCode.getCode());
+			
+		optimizeConstants(cgen, cpgen, instList);
+		optimizeDynamicVariables(cgen, cpgen, instList);
+		
 
 		// Initialise a method generator with the original method as the baseline	
 		MethodGen methodGen = new MethodGen(method.getAccessFlags(), method.getReturnType(),
@@ -125,6 +134,53 @@ public class ConstantFolder
 	}
 
 
+	private void optimizeDynamicVariables(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
+		String searchPattern = "NOP";  // TODO: find suitable pattern.
+		/* This should recognize:
+		 * Variable stores when directly preceded by a constant push onto stack
+		 * Variable loads
+		 */
+		InstructionFinder ifinder = new InstructionFinder(instList);
+		HashMap<Integer, Object> valueTable = new HashMap<Integer, Object>();
+		for (@SuppressWarnings("unchecked")
+		Iterator<InstructionHandle[]> iter = ifinder.search(searchPattern); iter.hasNext();) {
+			InstructionHandle[] instrs = iter.next();
+			if (isVariableStore(instrs)) {
+				updateValueTable(instList, instrs, valueTable);
+			} else {  // If it's a variable load
+				getValueFromTable(instList, instrs, valueTable);
+			}
+		}
+		
+	}
+
+	private void getValueFromTable(InstructionList instList,
+			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable) {
+		/* TODO: this method should replace the variable load with a constant
+		 * push when the value is known. Note that despite any number of passes
+		 * sometimes we won't be able to know the value (eg if it requires user
+		 * input). In these cases we should leave the instList alone.
+		 */
+		
+		
+	}
+
+	private void updateValueTable(InstructionList instList,
+			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable) {
+		/*
+		 * TODO: this method is called when a constant is assigned to a variable.
+		 * This may be after a few passes of the optimizer. In this case we should
+		 * delete the constant push and the store instruction and save the value
+		 * in the valueTable for future use.
+		 */
+	}
+
+	private boolean isVariableStore(InstructionHandle[] instrs) {
+		// TODO Checks whether the given instructions represent a constant push
+		// followed by a local variable store.
+		return false;
+	}
+
 	private Number foldConstants(Number val0, Number val1, ArithmeticInstruction op) {
 		if (op instanceof IADD) {
 			return val0.intValue() + val1.intValue();
@@ -136,6 +192,7 @@ public class ConstantFolder
 			return val0.longValue() + val1.doubleValue();
 		}
 		return null;
+		// TODO: Add more instructions (eventually all the ones that Fu mentioned)
 
 	}
 
@@ -146,6 +203,7 @@ public class ConstantFolder
 		}  else {
 			return (Number) ((LDC)(ih.getInstruction())).getValue(cpgen);
 		}
+		//TODO: Make sure this works (?)
 	}
 
 
@@ -178,10 +236,8 @@ public class ConstantFolder
 			FileOutputStream out = new FileOutputStream(new File(optimisedFilePath));
 			this.optimized.dump(out);
 		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
