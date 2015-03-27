@@ -27,8 +27,11 @@ import com.sun.org.apache.bcel.internal.generic.InstructionList;
 import com.sun.org.apache.bcel.internal.generic.InstructionTargeter;
 import com.sun.org.apache.bcel.internal.generic.LADD;
 import com.sun.org.apache.bcel.internal.generic.LDC;
+import com.sun.org.apache.bcel.internal.generic.LoadInstruction;
 import com.sun.org.apache.bcel.internal.generic.MethodGen;
 import com.sun.org.apache.bcel.internal.generic.PUSH;
+import com.sun.org.apache.bcel.internal.generic.PushInstruction;
+import com.sun.org.apache.bcel.internal.generic.StoreInstruction;
 import com.sun.org.apache.bcel.internal.generic.TargetLostException;
 import com.sun.org.apache.bcel.internal.util.InstructionFinder;
 
@@ -151,56 +154,97 @@ public class ConstantFolder
 			InstructionHandle[] instrs = iter.next();
 			//System.out.println("Found patter"+instrs.toString());
 			if (isVariableStore(instrs)) {
-				updateValueTable(instList, instrs, valueTable);
+				updateValueTable(instList, instrs, valueTable, cgen, cpgen);
 			} else {  // If it's a variable load
-				getValueFromTable(instList, instrs, valueTable);
+				getValueFromTable(instList, instrs, valueTable, cgen);
 			}
 		}
 		
 	}
 
 	private void getValueFromTable(InstructionList instList,
-			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable) {
-			System.out.println(instrs.length==1?"Yes":"No");
-		/* TODO: this method should replace the variable load with a constant
+			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable, ClassGen cgen) {
+		
+		/* DONE: this method should replace the variable load with a constant
 		 * push when the value is known. Note that despite any number of passes
 		 * sometimes we won't be able to know the value (eg if it requires user
 		 * input). In these cases we should leave the instList alone.
 		 */
+		LoadInstruction Load = (LoadInstruction) instrs[0].getInstruction();
+		int instrId = Load.getIndex();
 		
+		if(valueTable.containsKey(instrId)){
+		
+			//Create Instruction list
+			InstructionFactory f  = new InstructionFactory(cgen);
+			InstructionList    newIL = new InstructionList();
+			
+			newIL.append(f.createConstant(valueTable.get(instrId)));
+			instList.insert(instrs[0].getNext(), newIL);
+		
+			//Delete Load Instructions 
+			try {
+				instList.delete(instrs[0]);
+			} 
+			catch(TargetLostException e) {
+				InstructionHandle[] targets = e.getTargets();
+				for(int i=0; i < targets.length; i++) {
+					InstructionTargeter[] targeters = (InstructionTargeter[]) targets[i].getTargeters();
+					for(int j=0; j < targeters.length; j++)
+						targeters[j].updateTarget(targets[i], instrs[0].getNext());
+				}
+			}
+		
+		}
+	
 		
 	}
 
 	private void updateValueTable(InstructionList instList,
-			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable) {
-		System.out.println(instrs.length==2?"Yes":"No");
+			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable,ClassGen cgen, ConstantPoolGen cpgen) {
+
 		/*
 		 * TODO: this method is called when a constant is assigned to a variable.
 		 * This may be after a few passes of the optimizer. In this case we should
 		 * delete the constant push and the store instruction and save the value
 		 * in the valueTable for future use.
 		 */
+		PushInstruction pushInst = (PushInstruction) instrs[0].getInstruction();
+		StoreInstruction storeInst = (StoreInstruction) instrs[1].getInstruction();
+	
+		int instrId = storeInst.getIndex();
+		
+		if(pushInst instanceof ConstantPushInstruction)
+		{
+			System.out.println(instrId);
+			System.out.println(((ConstantPushInstruction) pushInst).getValue());
+			System.out.println();
+			valueTable.put(instrId, ((ConstantPushInstruction) pushInst).getValue());
+			try {
+				instList.delete(instrs[0],instrs[1]);
+			} 
+			catch(TargetLostException e) {
+				InstructionHandle[] targets = e.getTargets();
+				for(int i=0; i < targets.length; i++) {
+					InstructionTargeter[] targeters = (InstructionTargeter[]) targets[i].getTargeters();
+					for(int j=0; j < targeters.length; j++)
+						targeters[j].updateTarget(targets[i], instrs[1].getNext());
+				}
+			}
+				
+		}
+
+		//Delete Load Instructions 
+		
+		
+		
 	}
 
 	private boolean isVariableStore(InstructionHandle[] instrs) {
-		// TODO Checks whether the given instructions represent a constant push
+		// DONE Checks whether the given instructions represent a constant push
 		// followed by a local variable store.
-		
-		if(instrs.length == 2){
-			return true;
-		}
-		//Transfrom InstrucitonHandle into InstructionList
-		/*InstructionList instList = new InstructionList(); 
-		for(int i = 0; i<instrs.length; i++){}
-		instList.append( instrs[0].getInstruction());
-		
-		InstructionFinder ifinder = new InstructionFinder(instList);
-		String searchPattern =  "((PushInstruction)(StoreInstruction))";
-		for (@SuppressWarnings("unchecked")
-		Iterator<InstructionHandle[]> iter = ifinder.search(searchPattern); iter.hasNext();) {
-			return true;
-		}*/
-		return false;
+		// FIXME implement extra Safety
+		return instrs.length == 2;
 	}
 
 	private Number foldConstants(Number val0, Number val1, ArithmeticInstruction op) {
@@ -213,6 +257,7 @@ public class ConstantFolder
 		} else if (op instanceof LADD) {
 			return val0.longValue() + val1.doubleValue();
 		}
+		
 		return null;
 		// TODO: Add more instructions (eventually all the ones that Fu mentioned)
 
@@ -221,11 +266,16 @@ public class ConstantFolder
 
 	private Number getValueFromConstantInstruction(InstructionHandle ih, ConstantPoolGen cpgen) {
 		if (ih instanceof ConstantPushInstruction) {
+			System.out.println("a" + ((ConstantPushInstruction)(ih.getInstruction())).getValue());
 			return ((ConstantPushInstruction)(ih.getInstruction())).getValue();
-		}  else {
-			return (Number) ((LDC)(ih.getInstruction())).getValue(cpgen);
-		}
+		} 
+
+		
+		System.out.println("b" + (Number) ((LDC)(ih.getInstruction())).getValue(cpgen));
+		return (Number) ((LDC)(ih.getInstruction())).getValue(cpgen);
+		
 		//TODO: Make sure this works (?)
+		
 	}
 
 
