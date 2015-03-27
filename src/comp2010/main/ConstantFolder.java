@@ -135,7 +135,11 @@ public class ConstantFolder
 
 
 	private void optimizeDynamicVariables(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
-		String searchPattern = "NOP";  // TODO: find suitable pattern.
+		String searchPattern = ""
+				+ "((PushInstruction)(StoreInstruction))"
+				+ "|"
+				+ "(LoadInstruction)"; 
+		// DONE: find suitable pattern.
 		/* This should recognize:
 		 * Variable stores when directly preceded by a constant push onto stack
 		 * Variable loads
@@ -145,6 +149,7 @@ public class ConstantFolder
 		for (@SuppressWarnings("unchecked")
 		Iterator<InstructionHandle[]> iter = ifinder.search(searchPattern); iter.hasNext();) {
 			InstructionHandle[] instrs = iter.next();
+			//System.out.println("Found patter"+instrs.toString());
 			if (isVariableStore(instrs)) {
 				updateValueTable(instList, instrs, valueTable);
 			} else {  // If it's a variable load
@@ -156,6 +161,7 @@ public class ConstantFolder
 
 	private void getValueFromTable(InstructionList instList,
 			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable) {
+			System.out.println(instrs.length==1?"Yes":"No");
 		/* TODO: this method should replace the variable load with a constant
 		 * push when the value is known. Note that despite any number of passes
 		 * sometimes we won't be able to know the value (eg if it requires user
@@ -167,6 +173,7 @@ public class ConstantFolder
 
 	private void updateValueTable(InstructionList instList,
 			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable) {
+		System.out.println(instrs.length==2?"Yes":"No");
 		/*
 		 * TODO: this method is called when a constant is assigned to a variable.
 		 * This may be after a few passes of the optimizer. In this case we should
@@ -178,6 +185,21 @@ public class ConstantFolder
 	private boolean isVariableStore(InstructionHandle[] instrs) {
 		// TODO Checks whether the given instructions represent a constant push
 		// followed by a local variable store.
+		
+		if(instrs.length == 2){
+			return true;
+		}
+		//Transfrom InstrucitonHandle into InstructionList
+		/*InstructionList instList = new InstructionList(); 
+		for(int i = 0; i<instrs.length; i++){}
+		instList.append( instrs[0].getInstruction());
+		
+		InstructionFinder ifinder = new InstructionFinder(instList);
+		String searchPattern =  "((PushInstruction)(StoreInstruction))";
+		for (@SuppressWarnings("unchecked")
+		Iterator<InstructionHandle[]> iter = ifinder.search(searchPattern); iter.hasNext();) {
+			return true;
+		}*/
 		return false;
 	}
 
@@ -221,7 +243,7 @@ public class ConstantFolder
 		
 		
 		for (Method m : cgen.getMethods()) {
-			System.out.println("After optimization:");
+			System.out.println(cgen.getClassName()+": After optimization:");
 			System.out.println(new InstructionList(m.getCode().getCode()));
 		}
 
