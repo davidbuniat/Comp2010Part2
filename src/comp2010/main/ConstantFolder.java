@@ -16,9 +16,12 @@ import com.sun.org.apache.bcel.internal.generic.ClassGen;
 import com.sun.org.apache.bcel.internal.generic.ConstantPoolGen;
 import com.sun.org.apache.bcel.internal.generic.ConstantPushInstruction;
 import com.sun.org.apache.bcel.internal.generic.DADD;
+import com.sun.org.apache.bcel.internal.generic.DNEG;
 import com.sun.org.apache.bcel.internal.generic.FADD;
+import com.sun.org.apache.bcel.internal.generic.FNEG;
 import com.sun.org.apache.bcel.internal.generic.IADD;
 import com.sun.org.apache.bcel.internal.generic.ICONST;
+import com.sun.org.apache.bcel.internal.generic.INEG;
 import com.sun.org.apache.bcel.internal.generic.Instruction;
 import com.sun.org.apache.bcel.internal.generic.InstructionConstants;
 import com.sun.org.apache.bcel.internal.generic.InstructionFactory;
@@ -27,6 +30,7 @@ import com.sun.org.apache.bcel.internal.generic.InstructionList;
 import com.sun.org.apache.bcel.internal.generic.InstructionTargeter;
 import com.sun.org.apache.bcel.internal.generic.LADD;
 import com.sun.org.apache.bcel.internal.generic.LDC;
+import com.sun.org.apache.bcel.internal.generic.LNEG;
 import com.sun.org.apache.bcel.internal.generic.LoadInstruction;
 import com.sun.org.apache.bcel.internal.generic.MethodGen;
 import com.sun.org.apache.bcel.internal.generic.PUSH;
@@ -58,18 +62,28 @@ public class ConstantFolder
 	private void optimizeConstants(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
 		InstructionFinder ifinder = new InstructionFinder(instList);
 		String constant = "(ConstantPushInstruction|LDC) ";
-		String pattern = constant + constant + "ArithmeticInstruction";
+		String negation = "(INEG|FNEG|DNEG|LNEG)";
+		String negationPattern = constant + negation;
+		String binaryPattern = constant + constant + "ArithmeticInstruction";
+		String pattern = "(" + negationPattern + "|" + binaryPattern + ")";
 		for (Iterator<InstructionHandle[]> iter = ifinder.search(pattern); iter.hasNext();) {
 			InstructionHandle[] instrs = iter.next();
-	
-			Number val0 = getValueFromConstantInstruction(instrs[0], cpgen);
-			Number val1 = getValueFromConstantInstruction(instrs[1], cpgen);
-			Number result = foldConstants(val0, val1, (ArithmeticInstruction) instrs[2].getInstruction());
-			
+
+			Number result = null;
+
+			if (instrs.length == 3) {
+				Number val0 = getValueFromConstantInstruction(instrs[0], cpgen);
+				Number val1 = getValueFromConstantInstruction(instrs[1], cpgen);
+				result = foldConstants(val0, val1, (ArithmeticInstruction) instrs[2].getInstruction());
+			} else {
+				Number val = getValueFromConstantInstruction(instrs[0], cpgen);
+				result = negateInstr(val, instrs[1].getInstruction());
+			}
+
 			//Create Instruction list
 			InstructionFactory f  = new InstructionFactory(cgen);
 			InstructionList    newIL = new InstructionList();
-			
+
 			newIL.append(f.createConstant(result));
 			/*System.out.println(val0);
 			System.out.println(val1);
@@ -79,26 +93,40 @@ public class ConstantFolder
 			System.out.println(instList);
 
 			instList.insert(instrs[2].getNext(), newIL);
-		
+
 			System.out.println("Added Instructions:");
 			System.out.println(instList);
 			//Delete Instructions from first to last
 			try {
-				instList.delete(instrs[0], instrs[2]);
+				instList.delete(instrs[0], instrs[instrs.length - 1]);
 			} 
 			catch(TargetLostException e) {
 				InstructionHandle[] targets = e.getTargets();
 				for(int i=0; i < targets.length; i++) {
 					InstructionTargeter[] targeters = (InstructionTargeter[]) targets[i].getTargeters();
 					for(int j=0; j < targeters.length; j++)
-						targeters[j].updateTarget(targets[i], instrs[2].getNext());
+						targeters[j].updateTarget(targets[i], instrs[instrs.length - 1].getNext());
 				}
 			}
 			System.out.println("Result should be:");
 			System.out.println(instList);
 		}
 	}
-	
+
+	private Number negateInstr(Number val, Instruction instruction) {
+		if (instruction instanceof INEG) {
+			return val.intValue() * -1;
+		} else if (instruction instanceof DNEG) {
+			return val.doubleValue() * -1.0;
+		} else if (instruction instanceof FNEG) {
+			return val.floatValue() * -1.0f;
+		} else if (instruction instanceof LNEG) {
+			return val.longValue() * -1L;
+		} else {
+			return null;
+		}
+	}
+
 	private void optimizeMethod(ClassGen cgen, ConstantPoolGen cpgen, Method method)
 	{
 		/* TODO: include a boolean flag if anything was changed. If it was,
@@ -110,15 +138,15 @@ public class ConstantFolder
 		// Now get the actualy bytecode data in byte array, 
 		// and use it to initialise an InstructionList
 		InstructionList instList = new InstructionList(methodCode.getCode());
-			
+
 		optimizeConstants(cgen, cpgen, instList);
 		optimizeDynamicVariables(cgen, cpgen, instList);
-		
+
 
 		// Initialise a method generator with the original method as the baseline	
 		MethodGen methodGen = new MethodGen(method.getAccessFlags(), method.getReturnType(),
-											method.getArgumentTypes(), null, method.getName(),
-											cgen.getClassName(), instList, cpgen);
+				method.getArgumentTypes(), null, method.getName(),
+				cgen.getClassName(), instList, cpgen);
 
 
 		// setPositions(true) checks whether jump handles 
@@ -159,12 +187,12 @@ public class ConstantFolder
 				getValueFromTable(instList, instrs, valueTable, cgen);
 			}
 		}
-		
+
 	}
 
 	private void getValueFromTable(InstructionList instList,
 			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable, ClassGen cgen) {
-		
+
 		/* DONE: this method should replace the variable load with a constant
 		 * push when the value is known. Note that despite any number of passes
 		 * sometimes we won't be able to know the value (eg if it requires user
@@ -172,16 +200,16 @@ public class ConstantFolder
 		 */
 		LoadInstruction Load = (LoadInstruction) instrs[0].getInstruction();
 		int instrId = Load.getIndex();
-		
+
 		if(valueTable.containsKey(instrId)){
-		
+
 			//Create Instruction list
 			InstructionFactory f  = new InstructionFactory(cgen);
 			InstructionList    newIL = new InstructionList();
-			
+
 			newIL.append(f.createConstant(valueTable.get(instrId)));
 			instList.insert(instrs[0].getNext(), newIL);
-		
+
 			//Delete Load Instructions 
 			try {
 				instList.delete(instrs[0]);
@@ -194,10 +222,10 @@ public class ConstantFolder
 						targeters[j].updateTarget(targets[i], instrs[0].getNext());
 				}
 			}
-		
+
 		}
-	
-		
+
+
 	}
 
 	private void updateValueTable(InstructionList instList,
@@ -211,9 +239,9 @@ public class ConstantFolder
 		 */
 		PushInstruction pushInst = (PushInstruction) instrs[0].getInstruction();
 		StoreInstruction storeInst = (StoreInstruction) instrs[1].getInstruction();
-	
+
 		int instrId = storeInst.getIndex();
-		
+
 		if(pushInst instanceof ConstantPushInstruction)
 		{
 			System.out.println(instrId);
@@ -231,13 +259,13 @@ public class ConstantFolder
 						targeters[j].updateTarget(targets[i], instrs[1].getNext());
 				}
 			}
-				
+
 		}
 
 		//Delete Load Instructions 
-		
-		
-		
+
+
+
 	}
 
 	private boolean isVariableStore(InstructionHandle[] instrs) {
@@ -257,7 +285,7 @@ public class ConstantFolder
 		} else if (op instanceof LADD) {
 			return val0.longValue() + val1.doubleValue();
 		}
-		
+
 		return null;
 		// TODO: Add more instructions (eventually all the ones that Fu mentioned)
 
@@ -270,12 +298,12 @@ public class ConstantFolder
 			return ((ConstantPushInstruction)(ih.getInstruction())).getValue();
 		} 
 
-		
+
 		System.out.println("b" + (Number) ((LDC)(ih.getInstruction())).getValue(cpgen));
 		return (Number) ((LDC)(ih.getInstruction())).getValue(cpgen);
-		
+
 		//TODO: Make sure this works (?)
-		
+
 	}
 
 
@@ -290,8 +318,8 @@ public class ConstantFolder
 		for (Method m : methods) {
 			optimizeMethod(cgen, cpgen, m);
 		}
-		
-		
+
+
 		for (Method m : cgen.getMethods()) {
 			System.out.println(cgen.getClassName()+": After optimization:");
 			System.out.println(new InstructionList(m.getCode().getCode()));
