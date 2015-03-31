@@ -46,6 +46,8 @@ public class ConstantFolder
 
 	JavaClass original = null;
 	JavaClass optimized = null;
+	
+	HashMap<Integer, Object> valueTable = new HashMap<Integer, Object>();
 
 	public ConstantFolder(String classFilePath)
 	{
@@ -59,13 +61,14 @@ public class ConstantFolder
 	}
 
 	@SuppressWarnings("unchecked")
-	private void optimizeConstants(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
+	private boolean optimizeConstants(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
 		InstructionFinder ifinder = new InstructionFinder(instList);
 		String constant = "(ConstantPushInstruction|LDC) ";
 		String negation = "(INEG|FNEG|DNEG|LNEG)";
 		String negationPattern = constant + negation;
 		String binaryPattern = constant + constant + "ArithmeticInstruction";
 		String pattern = "(" + negationPattern + "|" + binaryPattern + ")";
+		boolean madeChanges = false;
 		for (Iterator<InstructionHandle[]> iter = ifinder.search(pattern); iter.hasNext();) {
 			InstructionHandle[] instrs = iter.next();
 
@@ -97,6 +100,7 @@ public class ConstantFolder
 			System.out.println("Added Instructions:");
 			System.out.println(instList);
 			//Delete Instructions from first to last
+			madeChanges = true;
 			try {
 				instList.delete(instrs[0], instrs[instrs.length - 1]);
 			} 
@@ -111,6 +115,7 @@ public class ConstantFolder
 			System.out.println("Result should be:");
 			System.out.println(instList);
 		}
+		return madeChanges;
 	}
 
 	private Number negateInstr(Number val, Instruction instruction) {
@@ -129,7 +134,7 @@ public class ConstantFolder
 
 	private void optimizeMethod(ClassGen cgen, ConstantPoolGen cpgen, Method method)
 	{
-		/* TODO: include a boolean flag if anything was changed. If it was,
+		/* DONE: include a boolean flag if anything was changed. If it was,
 		 * recursively run the method again until nothing changes.
 		 */
 		// Get the Code of the method, which is a collection of bytecode instructions
@@ -139,8 +144,9 @@ public class ConstantFolder
 		// and use it to initialise an InstructionList
 		InstructionList instList = new InstructionList(methodCode.getCode());
 
-		optimizeConstants(cgen, cpgen, instList);
-		optimizeDynamicVariables(cgen, cpgen, instList);
+		boolean c = optimizeConstants(cgen, cpgen, instList);
+		boolean v = optimizeDynamicVariables(cgen, cpgen, instList);
+		boolean changesMade = c || v;
 
 
 		// Initialise a method generator with the original method as the baseline	
@@ -161,11 +167,15 @@ public class ConstantFolder
 		Method newMethod = methodGen.getMethod();
 		// replace the method in the original class
 		cgen.replaceMethod(method, newMethod);
+		
+		if (changesMade) {
+			optimizeMethod(cgen, cpgen, newMethod);
+		}
 
 	}
 
 
-	private void optimizeDynamicVariables(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
+	private boolean optimizeDynamicVariables(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
 		String searchPattern = ""
 				+ "((PushInstruction)(StoreInstruction))"
 				+ "|"
@@ -175,22 +185,26 @@ public class ConstantFolder
 		 * Variable stores when directly preceded by a constant push onto stack
 		 * Variable loads
 		 */
+		boolean madeChange = false;
 		InstructionFinder ifinder = new InstructionFinder(instList);
-		HashMap<Integer, Object> valueTable = new HashMap<Integer, Object>();
 		for (@SuppressWarnings("unchecked")
 		Iterator<InstructionHandle[]> iter = ifinder.search(searchPattern); iter.hasNext();) {
 			InstructionHandle[] instrs = iter.next();
 			//System.out.println("Found patter"+instrs.toString());
 			if (isVariableStore(instrs)) {
-				updateValueTable(instList, instrs, valueTable, cgen, cpgen);
+				boolean b = updateValueTable(instList, instrs, valueTable, cgen, cpgen);
+				madeChange |= b;
 			} else {  // If it's a variable load
-				getValueFromTable(instList, instrs, valueTable, cgen);
+				boolean b = getValueFromTable(instList, instrs, valueTable, cgen);
+				madeChange |= b;
 			}
 		}
+		
+		return madeChange;
 
 	}
 
-	private void getValueFromTable(InstructionList instList,
+	private boolean getValueFromTable(InstructionList instList,
 			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable, ClassGen cgen) {
 
 		/* DONE: this method should replace the variable load with a constant
@@ -222,13 +236,12 @@ public class ConstantFolder
 						targeters[j].updateTarget(targets[i], instrs[0].getNext());
 				}
 			}
-
+			return true;
 		}
-
-
+		return false;
 	}
 
-	private void updateValueTable(InstructionList instList,
+	private boolean updateValueTable(InstructionList instList,
 			InstructionHandle[] instrs, HashMap<Integer, Object> valueTable,ClassGen cgen, ConstantPoolGen cpgen) {
 
 		/*
@@ -242,14 +255,14 @@ public class ConstantFolder
 
 		int instrId = storeInst.getIndex();
 
-		if(pushInst instanceof ConstantPushInstruction)
-		{
+		if(pushInst instanceof ConstantPushInstruction) {
 			System.out.println(instrId);
 			System.out.println(((ConstantPushInstruction) pushInst).getValue());
 			System.out.println();
 			valueTable.put(instrId, ((ConstantPushInstruction) pushInst).getValue());
 			try {
 				instList.delete(instrs[0],instrs[1]);
+				return true;
 			} 
 			catch(TargetLostException e) {
 				InstructionHandle[] targets = e.getTargets();
@@ -258,14 +271,12 @@ public class ConstantFolder
 					for(int j=0; j < targeters.length; j++)
 						targeters[j].updateTarget(targets[i], instrs[1].getNext());
 				}
+				return false;
 			}
-
 		}
+		return false;
 
 		//Delete Load Instructions 
-
-
-
 	}
 
 	private boolean isVariableStore(InstructionHandle[] instrs) {
@@ -283,7 +294,7 @@ public class ConstantFolder
 		} else if (op instanceof DADD) {
 			return val0.doubleValue() + val1.doubleValue();
 		} else if (op instanceof LADD) {
-			return val0.longValue() + val1.doubleValue();
+			return val0.longValue() + val1.longValue();
 		}
 
 		return null;
@@ -316,6 +327,7 @@ public class ConstantFolder
 		// Do your optimization here
 		Method[] methods = cgen.getMethods();
 		for (Method m : methods) {
+			valueTable.clear();
 			optimizeMethod(cgen, cpgen, m);
 		}
 
