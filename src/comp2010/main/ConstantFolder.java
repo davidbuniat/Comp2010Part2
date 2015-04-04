@@ -12,6 +12,7 @@ import com.sun.org.apache.bcel.internal.classfile.Code;
 import com.sun.org.apache.bcel.internal.classfile.JavaClass;
 import com.sun.org.apache.bcel.internal.classfile.Method;
 import com.sun.org.apache.bcel.internal.generic.ArithmeticInstruction;
+import com.sun.org.apache.bcel.internal.generic.BIPUSH;
 import com.sun.org.apache.bcel.internal.generic.ClassGen;
 import com.sun.org.apache.bcel.internal.generic.ConstantPoolGen;
 import com.sun.org.apache.bcel.internal.generic.ConstantPushInstruction;
@@ -86,6 +87,7 @@ public class ConstantFolder
 
 	@SuppressWarnings("unchecked")
 	private boolean optimizeConstants(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
+
 		InstructionFinder ifinder = new InstructionFinder(instList);
 		String constant = "(ConstantPushInstruction|LDC) ";
 		String negation = "(INEG|FNEG|DNEG|LNEG)";
@@ -106,7 +108,7 @@ public class ConstantFolder
 				Number val = getValueFromConstantInstruction(instrs[0], cpgen);
 				result = negateInstr(val, instrs[1].getInstruction());
 			}
-
+			System.out.println("result: "+ result);
 			//Create Instruction list
 			InstructionFactory f  = new InstructionFactory(cgen);
 			InstructionList    newIL = new InstructionList();
@@ -116,13 +118,13 @@ public class ConstantFolder
 			System.out.println(val1);
 			System.out.println(result);*/
 			//Instruction new instruction before first instruction
-			System.out.println("Before optimization:");
-			System.out.println(instList);
+			//System.out.println("Before optimization:");
+			//System.out.println(instList);
 
-			instList.insert(instrs[2].getNext(), newIL);
+			instList.insert(instrs[0], newIL);
 
-			System.out.println("Added Instructions:");
-			System.out.println(instList);
+			//System.out.println("Added Instructions:");
+			//System.out.println(instList);
 			//Delete Instructions from first to last
 			madeChanges = true;
 			try {
@@ -136,9 +138,10 @@ public class ConstantFolder
 						targeters[j].updateTarget(targets[i], instrs[instrs.length - 1].getNext());
 				}
 			}
-			System.out.println("Result should be:");
-			System.out.println(instList);
+			//System.out.println("Result should be:");
+			//System.out.println(instList);
 		}
+		
 		return madeChanges;
 	}
 
@@ -158,6 +161,7 @@ public class ConstantFolder
 
 	private void optimizeMethod(ClassGen cgen, ConstantPoolGen cpgen, Method method)
 	{
+		
 		/* DONE: include a boolean flag if anything was changed. If it was,
 		 * recursively run the method again until nothing changes.
 		 */
@@ -244,9 +248,10 @@ public class ConstantFolder
 			//Create Instruction list
 			InstructionFactory f  = new InstructionFactory(cgen);
 			InstructionList    newIL = new InstructionList();
-
+			
+			System.out.println("getTable: " + valueTable.get(instrId));
 			newIL.append(f.createConstant(valueTable.get(instrId)));
-			instList.insert(instrs[0].getNext(), newIL);
+			instList.insert(instrs[0], newIL);
 
 			//Delete Load Instructions 
 			try {
@@ -280,10 +285,10 @@ public class ConstantFolder
 		int instrId = storeInst.getIndex();
 
 		if(pushInst instanceof ConstantPushInstruction) {
-			System.out.println(instrId);
-			System.out.println(((ConstantPushInstruction) pushInst).getValue());
-			System.out.println();
+			System.out.println("pushTable: "+instrId + " " + ((ConstantPushInstruction) pushInst).getValue());
+			//System.out.println();
 			valueTable.put(instrId, ((ConstantPushInstruction) pushInst).getValue());
+			
 			try {
 				instList.delete(instrs[0],instrs[1]);
 				return true;
@@ -298,6 +303,7 @@ public class ConstantFolder
 				return false;
 			}
 		}
+
 		return false;
 
 		//Delete Load Instructions 
@@ -307,7 +313,7 @@ public class ConstantFolder
 		// DONE Checks whether the given instructions represent a constant push
 		// followed by a local variable store.
 		// FIXME implement extra Safety
-		return instrs.length == 2;
+		return !(instrs.length == 1);
 	}
 
 	private Number foldConstants(Number val0, Number val1, ArithmeticInstruction op) {
@@ -413,16 +419,15 @@ public class ConstantFolder
 
 
 	private Number getValueFromConstantInstruction(InstructionHandle ih, ConstantPoolGen cpgen) {
-		if (ih instanceof ConstantPushInstruction) {
-			System.out.println("a" + ((ConstantPushInstruction)(ih.getInstruction())).getValue());
+		
+		if (ih.getInstruction() instanceof ConstantPushInstruction) {
+			System.out.println("push: " + ((ConstantPushInstruction)(ih.getInstruction())).getValue());
 			return ((ConstantPushInstruction)(ih.getInstruction())).getValue();
-		} 
-
-
-		System.out.println("b" + (Number) ((LDC)(ih.getInstruction())).getValue(cpgen));
-		return (Number) ((LDC)(ih.getInstruction())).getValue(cpgen);
-
-		//TODO: Make sure this works (?)
+		}
+		else{
+			System.out.println("load: " + (Number) ((LDC)(ih.getInstruction())).getValue(cpgen));
+			return (Number) ((LDC)(ih.getInstruction())).getValue(cpgen);
+		}
 
 	}
 
@@ -436,14 +441,24 @@ public class ConstantFolder
 		// Do your optimization here
 		Method[] methods = cgen.getMethods();
 		for (Method m : methods) {
+			
 			valueTable.clear();
-			optimizeMethod(cgen, cpgen, m);
-		}
-
-
-		for (Method m : cgen.getMethods()) {
-			System.out.println(cgen.getClassName()+": After optimization:");
+			System.out.println("~ "+cgen.getClassName()+" "+m.getName()+" ~");
+			System.out.println("Before optimization:");
 			System.out.println(new InstructionList(m.getCode().getCode()));
+			
+			System.out.println(" ");
+			System.out.println("Processing optimizations:");
+			optimizeMethod(cgen, cpgen, m);
+			
+			
+		}
+		for (Method m : methods) {
+			System.out.println(" ");
+			System.out.println("~ "+cgen.getClassName()+" "+m.getName()+" ~");
+			System.out.println("After optimization:");
+			System.out.println(new InstructionList(m.getCode().getCode()));
+			
 		}
 
 		// we generate a new class with modifications
