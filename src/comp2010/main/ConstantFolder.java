@@ -161,7 +161,7 @@ public class ConstantFolder
 
 	private void optimizeMethod(ClassGen cgen, ConstantPoolGen cpgen, Method method)
 	{
-		
+		System.out.println("...optimizeMethod...");
 		/* DONE: include a boolean flag if anything was changed. If it was,
 		 * recursively run the method again until nothing changes.
 		 */
@@ -313,7 +313,8 @@ public class ConstantFolder
 		// DONE Checks whether the given instructions represent a constant push
 		// followed by a local variable store.
 		// FIXME implement extra Safety
-		return !(instrs.length == 1);
+
+		return (instrs.length == 2);
 	}
 
 	private Number foldConstants(Number val0, Number val1, ArithmeticInstruction op) {
@@ -424,10 +425,11 @@ public class ConstantFolder
 			System.out.println("push: " + ((ConstantPushInstruction)(ih.getInstruction())).getValue());
 			return ((ConstantPushInstruction)(ih.getInstruction())).getValue();
 		}
-		else{
+		else if(ih.getInstruction() instanceof LDC){
 			System.out.println("load: " + (Number) ((LDC)(ih.getInstruction())).getValue(cpgen));
 			return (Number) ((LDC)(ih.getInstruction())).getValue(cpgen);
 		}
+		return null;
 
 	}
 
