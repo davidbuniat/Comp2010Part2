@@ -6,9 +6,9 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Iterator;
 
+import com.sun.corba.se.spi.ior.IOR;
 import com.sun.org.apache.bcel.internal.classfile.ClassParser;
 import com.sun.org.apache.bcel.internal.classfile.Code;
-import com.sun.org.apache.bcel.internal.classfile.Constant;
 import com.sun.org.apache.bcel.internal.classfile.JavaClass;
 import com.sun.org.apache.bcel.internal.classfile.Method;
 import com.sun.org.apache.bcel.internal.generic.ArithmeticInstruction;
@@ -16,24 +16,48 @@ import com.sun.org.apache.bcel.internal.generic.ClassGen;
 import com.sun.org.apache.bcel.internal.generic.ConstantPoolGen;
 import com.sun.org.apache.bcel.internal.generic.ConstantPushInstruction;
 import com.sun.org.apache.bcel.internal.generic.DADD;
+import com.sun.org.apache.bcel.internal.generic.DDIV;
+import com.sun.org.apache.bcel.internal.generic.DMUL;
 import com.sun.org.apache.bcel.internal.generic.DNEG;
+import com.sun.org.apache.bcel.internal.generic.DREM;
+import com.sun.org.apache.bcel.internal.generic.DSUB;
 import com.sun.org.apache.bcel.internal.generic.FADD;
+import com.sun.org.apache.bcel.internal.generic.FDIV;
+import com.sun.org.apache.bcel.internal.generic.FMUL;
 import com.sun.org.apache.bcel.internal.generic.FNEG;
+import com.sun.org.apache.bcel.internal.generic.FREM;
+import com.sun.org.apache.bcel.internal.generic.FSUB;
 import com.sun.org.apache.bcel.internal.generic.IADD;
-import com.sun.org.apache.bcel.internal.generic.ICONST;
+import com.sun.org.apache.bcel.internal.generic.IAND;
+import com.sun.org.apache.bcel.internal.generic.IDIV;
+import com.sun.org.apache.bcel.internal.generic.IMUL;
 import com.sun.org.apache.bcel.internal.generic.INEG;
+import com.sun.org.apache.bcel.internal.generic.IREM;
+import com.sun.org.apache.bcel.internal.generic.ISHL;
+import com.sun.org.apache.bcel.internal.generic.ISHR;
+import com.sun.org.apache.bcel.internal.generic.ISUB;
+import com.sun.org.apache.bcel.internal.generic.IUSHR;
+import com.sun.org.apache.bcel.internal.generic.IXOR;
 import com.sun.org.apache.bcel.internal.generic.Instruction;
-import com.sun.org.apache.bcel.internal.generic.InstructionConstants;
 import com.sun.org.apache.bcel.internal.generic.InstructionFactory;
 import com.sun.org.apache.bcel.internal.generic.InstructionHandle;
 import com.sun.org.apache.bcel.internal.generic.InstructionList;
 import com.sun.org.apache.bcel.internal.generic.InstructionTargeter;
 import com.sun.org.apache.bcel.internal.generic.LADD;
+import com.sun.org.apache.bcel.internal.generic.LAND;
 import com.sun.org.apache.bcel.internal.generic.LDC;
+import com.sun.org.apache.bcel.internal.generic.LDIV;
+import com.sun.org.apache.bcel.internal.generic.LMUL;
 import com.sun.org.apache.bcel.internal.generic.LNEG;
+import com.sun.org.apache.bcel.internal.generic.LOR;
+import com.sun.org.apache.bcel.internal.generic.LREM;
+import com.sun.org.apache.bcel.internal.generic.LSHL;
+import com.sun.org.apache.bcel.internal.generic.LSHR;
+import com.sun.org.apache.bcel.internal.generic.LSUB;
+import com.sun.org.apache.bcel.internal.generic.LUSHR;
+import com.sun.org.apache.bcel.internal.generic.LXOR;
 import com.sun.org.apache.bcel.internal.generic.LoadInstruction;
 import com.sun.org.apache.bcel.internal.generic.MethodGen;
-import com.sun.org.apache.bcel.internal.generic.PUSH;
 import com.sun.org.apache.bcel.internal.generic.PushInstruction;
 import com.sun.org.apache.bcel.internal.generic.StoreInstruction;
 import com.sun.org.apache.bcel.internal.generic.TargetLostException;
@@ -287,6 +311,7 @@ public class ConstantFolder
 	}
 
 	private Number foldConstants(Number val0, Number val1, ArithmeticInstruction op) {
+		// Addition
 		if (op instanceof IADD) {
 			return val0.intValue() + val1.intValue();
 		} else if (op instanceof FADD) {
@@ -296,10 +321,94 @@ public class ConstantFolder
 		} else if (op instanceof LADD) {
 			return val0.longValue() + val1.longValue();
 		}
+		
+		// Division
+		else if (op instanceof IDIV) {
+			return val0.intValue() / val1.intValue();
+		} else if (op instanceof FDIV) {
+			return val0.floatValue() / val1.floatValue();
+		} else if (op instanceof DDIV) {
+			return val0.doubleValue() / val1.doubleValue();
+		} else if (op instanceof LDIV) {
+			return val0.longValue() / val1.doubleValue();
+		}
+		
+		// Multiplication
+		else if (op instanceof IMUL) {
+			return val0.intValue() * val1.intValue();
+		} else if (op instanceof FMUL) {
+			return val0.floatValue() * val1.floatValue();
+		} else if (op instanceof DMUL) {
+			return val0.doubleValue() * val1.doubleValue();
+		} else if (op instanceof LMUL) {
+			return val0.longValue() * val1.doubleValue();
+		}
+		
+		// Reminder
+		else if (op instanceof IREM) {
+			return val0.intValue() % val1.intValue();
+		} else if (op instanceof FREM) {
+			return val0.floatValue() % val1.floatValue();
+		} else if (op instanceof DREM) {
+			return val0.doubleValue() % val1.doubleValue();
+		} else if (op instanceof LREM) {
+			return val0.longValue() % val1.doubleValue();
+		}
+		
+		// Substraction
+		else if (op instanceof ISUB) {
+			return val0.intValue() - val1.intValue();
+		} else if (op instanceof FSUB) {
+			return val0.floatValue() - val1.floatValue();
+		} else if (op instanceof DSUB) {
+			return val0.doubleValue() - val1.doubleValue();
+		} else if (op instanceof LSUB) {
+			return val0.longValue() - val1.doubleValue();
+		}
+		
+		// Bitwise OR
+		else if (op instanceof IOR) {
+			return val0.intValue() | val1.intValue();
+		} else if (op instanceof LOR) {
+			return val0.longValue() | val1.longValue();
+		}
+		
+		// Bitwise XOR
+		else if (op instanceof IXOR) {
+			return val0.intValue() ^ val1.intValue();
+		} else if (op instanceof LXOR) {
+			return val0.longValue() ^ val1.longValue();
+		}
+		
+		//Bitwise AND
+		else if (op instanceof IAND) {
+			return val0.intValue() & val1.intValue();
+		} else if (op instanceof LAND) {
+			return val0.longValue() & val1.longValue();
+		}
+		
+		//Arithmetic Shift Left
+		else if (op instanceof ISHL) {
+			return val0.intValue() << val1.intValue();
+		} else if (op instanceof LSHL) {
+			return val0.longValue() << val1.longValue();
+		}
+		
+		//Arithmetic Shift Right
+		else if (op instanceof ISHR) {
+			return val0.intValue() >> val1.intValue();
+		} else if (op instanceof LSHR) {
+			return val0.longValue() >>> val1.longValue();
+		}
+		
+		//Logical Shift Right
+		else if (op instanceof IUSHR) {
+			return val0.intValue() >>> val1.intValue();
+		} else if (op instanceof LUSHR) {
+			return val0.longValue() >>> val1.longValue();
+		}
 
 		return null;
-		// TODO: Add more instructions (eventually all the ones that Fu mentioned)
-
 	}
 
 
