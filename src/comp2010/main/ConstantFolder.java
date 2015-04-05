@@ -71,7 +71,7 @@ public class ConstantFolder
 
 	JavaClass original = null;
 	JavaClass optimized = null;
-	
+
 	HashMap<Integer, Object> valueTable = new HashMap<Integer, Object>();
 
 	public ConstantFolder(String classFilePath)
@@ -141,7 +141,7 @@ public class ConstantFolder
 			//System.out.println("Result should be:");
 			//System.out.println(instList);
 		}
-		
+
 		return madeChanges;
 	}
 
@@ -195,7 +195,7 @@ public class ConstantFolder
 		Method newMethod = methodGen.getMethod();
 		// replace the method in the original class
 		cgen.replaceMethod(method, newMethod);
-		
+
 		if (changesMade) {
 			optimizeMethod(cgen, cpgen, newMethod);
 		}
@@ -207,7 +207,9 @@ public class ConstantFolder
 		String searchPattern = ""
 				+ "((PushInstruction)(StoreInstruction))"
 				+ "|"
-				+ "(LoadInstruction)"; 
+				+ "(LoadInstruction)"
+				+ "|"
+				+ "(StoreInstruction)"; 
 		// DONE: find suitable pattern.
 		/* This should recognize:
 		 * Variable stores when directly preceded by a constant push onto stack
@@ -220,16 +222,28 @@ public class ConstantFolder
 			InstructionHandle[] instrs = iter.next();
 			//System.out.println("Found patter"+instrs.toString());
 			if (isVariableStore(instrs)) {
-				boolean b = updateValueTable(instList, instrs, valueTable, cgen, cpgen);
+				boolean b = false;
+				if (instrs.length == 2) {
+					b = updateValueTable(instList, instrs, valueTable, cgen, cpgen);
+				} else {
+					deleteEntryFromTable(instrs, valueTable);
+				}
 				madeChange |= b;
 			} else {  // If it's a variable load
 				boolean b = getValueFromTable(instList, instrs, valueTable, cgen);
 				madeChange |= b;
 			}
 		}
-		
+
 		return madeChange;
 
+	}
+
+	private void deleteEntryFromTable(InstructionHandle[] instrs,
+			HashMap<Integer, Object> table) {
+		StoreInstruction si = (StoreInstruction) instrs[0].getInstruction();
+		int varID = si.getIndex();
+		table.remove(varID);
 	}
 
 	private boolean getValueFromTable(InstructionList instList,
@@ -248,7 +262,7 @@ public class ConstantFolder
 			//Create Instruction list
 			InstructionFactory f  = new InstructionFactory(cgen);
 			InstructionList    newIL = new InstructionList();
-			
+
 			System.out.println("getTable: " + valueTable.get(instrId));
 			newIL.append(f.createConstant(valueTable.get(instrId)));
 			instList.insert(instrs[0], newIL);
@@ -288,7 +302,7 @@ public class ConstantFolder
 			System.out.println("pushTable: "+instrId + " " + ((ConstantPushInstruction) pushInst).getValue());
 			//System.out.println();
 			valueTable.put(instrId, ((ConstantPushInstruction) pushInst).getValue());
-			
+
 			try {
 				instList.delete(instrs[0],instrs[1]);
 				return true;
@@ -314,7 +328,7 @@ public class ConstantFolder
 		// followed by a local variable store.
 		// FIXME implement extra Safety
 
-		return (instrs.length == 2);
+		return (instrs[instrs.length - 1].getInstruction() instanceof StoreInstruction);
 	}
 
 	private Number foldConstants(Number val0, Number val1, ArithmeticInstruction op) {
@@ -328,7 +342,7 @@ public class ConstantFolder
 		} else if (op instanceof LADD) {
 			return val0.longValue() + val1.longValue();
 		}
-		
+
 		// Division
 		else if (op instanceof IDIV) {
 			return val0.intValue() / val1.intValue();
@@ -339,7 +353,7 @@ public class ConstantFolder
 		} else if (op instanceof LDIV) {
 			return val0.longValue() / val1.doubleValue();
 		}
-		
+
 		// Multiplication
 		else if (op instanceof IMUL) {
 			return val0.intValue() * val1.intValue();
@@ -350,7 +364,7 @@ public class ConstantFolder
 		} else if (op instanceof LMUL) {
 			return val0.longValue() * val1.doubleValue();
 		}
-		
+
 		// Reminder
 		else if (op instanceof IREM) {
 			return val0.intValue() % val1.intValue();
@@ -361,7 +375,7 @@ public class ConstantFolder
 		} else if (op instanceof LREM) {
 			return val0.longValue() % val1.doubleValue();
 		}
-		
+
 		// Substraction
 		else if (op instanceof ISUB) {
 			return val0.intValue() - val1.intValue();
@@ -372,42 +386,42 @@ public class ConstantFolder
 		} else if (op instanceof LSUB) {
 			return val0.longValue() - val1.doubleValue();
 		}
-		
+
 		// Bitwise OR
 		else if (op instanceof IOR) {
 			return val0.intValue() | val1.intValue();
 		} else if (op instanceof LOR) {
 			return val0.longValue() | val1.longValue();
 		}
-		
+
 		// Bitwise XOR
 		else if (op instanceof IXOR) {
 			return val0.intValue() ^ val1.intValue();
 		} else if (op instanceof LXOR) {
 			return val0.longValue() ^ val1.longValue();
 		}
-		
+
 		//Bitwise AND
 		else if (op instanceof IAND) {
 			return val0.intValue() & val1.intValue();
 		} else if (op instanceof LAND) {
 			return val0.longValue() & val1.longValue();
 		}
-		
+
 		//Arithmetic Shift Left
 		else if (op instanceof ISHL) {
 			return val0.intValue() << val1.intValue();
 		} else if (op instanceof LSHL) {
 			return val0.longValue() << val1.longValue();
 		}
-		
+
 		//Arithmetic Shift Right
 		else if (op instanceof ISHR) {
 			return val0.intValue() >> val1.intValue();
 		} else if (op instanceof LSHR) {
 			return val0.longValue() >>> val1.longValue();
 		}
-		
+
 		//Logical Shift Right
 		else if (op instanceof IUSHR) {
 			return val0.intValue() >>> val1.intValue();
@@ -420,7 +434,7 @@ public class ConstantFolder
 
 
 	private Number getValueFromConstantInstruction(InstructionHandle ih, ConstantPoolGen cpgen) {
-		
+
 		if (ih.getInstruction() instanceof ConstantPushInstruction) {
 			System.out.println("push: " + ((ConstantPushInstruction)(ih.getInstruction())).getValue());
 			return ((ConstantPushInstruction)(ih.getInstruction())).getValue();
@@ -443,24 +457,24 @@ public class ConstantFolder
 		// Do your optimization here
 		Method[] methods = cgen.getMethods();
 		for (Method m : methods) {
-			
+
 			valueTable.clear();
 			System.out.println("~ "+cgen.getClassName()+" "+m.getName()+" ~");
 			System.out.println("Before optimization:");
 			System.out.println(new InstructionList(m.getCode().getCode()));
-			
+
 			System.out.println(" ");
 			System.out.println("Processing optimizations:");
 			optimizeMethod(cgen, cpgen, m);
-			
-			
+
+
 		}
 		for (Method m : methods) {
 			System.out.println(" ");
 			System.out.println("~ "+cgen.getClassName()+" "+m.getName()+" ~");
 			System.out.println("After optimization:");
 			System.out.println(new InstructionList(m.getCode().getCode()));
-			
+
 		}
 
 		// we generate a new class with modifications
