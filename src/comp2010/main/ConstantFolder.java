@@ -171,14 +171,13 @@ public class ConstantFolder
 		// Now get the actualy bytecode data in byte array, 
 		// and use it to initialise an InstructionList
 		InstructionList instList = new InstructionList(methodCode.getCode());
-
+		System.out.println("174: "+method.getName());
 		boolean changesMade;
 		do {
 			boolean c = optimizeConstants(cgen, cpgen, instList);
 			boolean v = optimizeDynamicVariables(cgen, cpgen, instList);
 			changesMade = c || v;
 		} while (changesMade);
-
 
 		// Initialise a method generator with the original method as the baseline	
 		MethodGen methodGen = new MethodGen(method.getAccessFlags(), method.getReturnType(),
@@ -470,6 +469,8 @@ public class ConstantFolder
 
 
 		}
+		
+		methods = cgen.getMethods();
 		for (Method m : methods) {
 			System.out.println(" ");
 			System.out.println("~ "+cgen.getClassName()+" "+m.getName()+" ~");
