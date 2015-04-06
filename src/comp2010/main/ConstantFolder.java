@@ -172,6 +172,7 @@ public class ConstantFolder
 		// and use it to initialise an InstructionList
 		InstructionList instList = new InstructionList(methodCode.getCode());
 		System.out.println("174: "+method.getName());
+
 		boolean changesMade;
 		do {
 			boolean c = optimizeConstants(cgen, cpgen, instList);
@@ -198,14 +199,14 @@ public class ConstantFolder
 		// replace the method in the original class
 		cgen.replaceMethod(method, newMethod);
 
-		
+
 
 	}
 
 
 	private boolean optimizeDynamicVariables(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
 		String searchPattern = ""
-				+ "((PushInstruction)(StoreInstruction))"
+				+ "((ConstantPushInstruction|LDC)(StoreInstruction))"
 				+ "|"
 				+ "(LoadInstruction)"
 				+ "|"
@@ -294,33 +295,34 @@ public class ConstantFolder
 		 * in the valueTable for future use.
 		 */
 		PushInstruction pushInst = (PushInstruction) instrs[0].getInstruction();
+		Number value;
+		if (pushInst instanceof ConstantPushInstruction) {
+			value = ((ConstantPushInstruction) pushInst).getValue();
+		} else if (pushInst instanceof LDC) {
+			value = (Number)((LDC)pushInst).getValue(cpgen);
+		} else {
+			return false;
+		}
+
 		StoreInstruction storeInst = (StoreInstruction) instrs[1].getInstruction();
 
 		int instrId = storeInst.getIndex();
 
-		if(pushInst instanceof ConstantPushInstruction) {
-			System.out.println("pushTable: "+instrId + " " + ((ConstantPushInstruction) pushInst).getValue());
-			//System.out.println();
-			valueTable.put(instrId, ((ConstantPushInstruction) pushInst).getValue());
+		System.out.println("pushTable: " + instrId + " " + value);
+		valueTable.put(instrId, value);
 
-			try {
-				instList.delete(instrs[0],instrs[1]);
-				return true;
-			} 
-			catch(TargetLostException e) {
-				InstructionHandle[] targets = e.getTargets();
-				for(int i=0; i < targets.length; i++) {
-					InstructionTargeter[] targeters = (InstructionTargeter[]) targets[i].getTargeters();
-					for(int j=0; j < targeters.length; j++)
-						targeters[j].updateTarget(targets[i], instrs[1].getNext());
-				}
-				return false;
+		try {
+			instList.delete(instrs[0],instrs[1]);
+			return true;
+		} catch(TargetLostException e) {
+			InstructionHandle[] targets = e.getTargets();
+			for(int i=0; i < targets.length; i++) {
+				InstructionTargeter[] targeters = (InstructionTargeter[]) targets[i].getTargeters();
+				for(int j=0; j < targeters.length; j++)
+					targeters[j].updateTarget(targets[i], instrs[1].getNext());
 			}
+			return false;
 		}
-
-		return false;
-
-		//Delete Load Instructions 
 	}
 
 	private boolean isVariableStore(InstructionHandle[] instrs) {
@@ -469,8 +471,9 @@ public class ConstantFolder
 
 
 		}
-		
+
 		methods = cgen.getMethods();
+
 		for (Method m : methods) {
 			System.out.println(" ");
 			System.out.println("~ "+cgen.getClassName()+" "+m.getName()+" ~");
