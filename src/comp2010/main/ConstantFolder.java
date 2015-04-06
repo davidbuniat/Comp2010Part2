@@ -206,11 +206,9 @@ public class ConstantFolder
 
 	private boolean optimizeDynamicVariables(ClassGen cgen, ConstantPoolGen cpgen, InstructionList instList) {
 		String searchPattern = ""
-				+ "((ConstantPushInstruction|LDC)(StoreInstruction))"
+				+ "((ConstantPushInstruction|LDC)?(StoreInstruction))"
 				+ "|"
-				+ "(LoadInstruction)"
-				+ "|"
-				+ "(StoreInstruction)"; 
+				+ "(LoadInstruction)"; 
 		// DONE: find suitable pattern.
 		/* This should recognize:
 		 * Variable stores when directly preceded by a constant push onto stack
@@ -221,7 +219,6 @@ public class ConstantFolder
 		for (@SuppressWarnings("unchecked")
 		Iterator<InstructionHandle[]> iter = ifinder.search(searchPattern); iter.hasNext();) {
 			InstructionHandle[] instrs = iter.next();
-			//System.out.println("Found patter"+instrs.toString());
 			if (isVariableStore(instrs)) {
 				boolean b = false;
 				if (instrs.length == 2) {
@@ -328,7 +325,6 @@ public class ConstantFolder
 	private boolean isVariableStore(InstructionHandle[] instrs) {
 		// DONE Checks whether the given instructions represent a constant push
 		// followed by a local variable store.
-		// FIXME implement extra Safety
 
 		return (instrs[instrs.length - 1].getInstruction() instanceof StoreInstruction);
 	}
