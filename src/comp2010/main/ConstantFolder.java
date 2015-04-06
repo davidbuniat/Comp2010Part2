@@ -172,9 +172,12 @@ public class ConstantFolder
 		// and use it to initialise an InstructionList
 		InstructionList instList = new InstructionList(methodCode.getCode());
 
-		boolean c = optimizeConstants(cgen, cpgen, instList);
-		boolean v = optimizeDynamicVariables(cgen, cpgen, instList);
-		boolean changesMade = c || v;
+		boolean changesMade;
+		do {
+			boolean c = optimizeConstants(cgen, cpgen, instList);
+			boolean v = optimizeDynamicVariables(cgen, cpgen, instList);
+			changesMade = c || v;
+		} while (changesMade);
 
 
 		// Initialise a method generator with the original method as the baseline	
@@ -196,9 +199,7 @@ public class ConstantFolder
 		// replace the method in the original class
 		cgen.replaceMethod(method, newMethod);
 
-		if (changesMade) {
-			optimizeMethod(cgen, cpgen, newMethod);
-		}
+		
 
 	}
 
