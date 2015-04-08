@@ -19,4 +19,23 @@ public class ConstantVariableFolding
         int y = 54321;
         return x > y;
     }
+    
+    public float methodFour(){
+        float x = 12344125F;
+        float y = 2145F;
+        return x/y;
+    }
+    
+    public int methodFive(){
+        int x = 2134;
+        int z = (x + 12345)/2;
+        int y = 54321%z;
+        return y%5;
+    }
+    
+    public double methodSix(){
+        int asd = 12345;
+        int div = 54321;
+        return asd*div/Math.PI;
+    }
 }

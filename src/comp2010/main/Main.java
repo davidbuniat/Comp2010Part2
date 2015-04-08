@@ -15,10 +15,10 @@ import java.nio.file.attribute.BasicFileAttributes;
 public class Main extends SimpleFileVisitor<Path> {
 
     @Option(name="-in",usage="Root directory of the input classfiles")
-    private String inputRoot;// "/Users/dav/Comp2010Part2/build/classes/comp2010/target/";
+    private static String inputRoot;// "/Users/dav/Comp2010Part2/build/classes/comp2010/target/";
 
     @Option(name="-out",usage="Root directory where optimised classfiles will be stored")
-    private String outputRoot;// "/Users/dav/Comp2010Part2/optimised/classes/comp2010/target/";
+    private static String outputRoot;// "/Users/dav/Comp2010Part2/optimised/classes/comp2010/target/";
 
     private void parseArguments(String args[])
     {
@@ -38,6 +38,9 @@ public class Main extends SimpleFileVisitor<Path> {
     public static void main(String args[]) throws IOException {
         Main main = new Main();
         main.parseArguments(args);
+        inputRoot = "/Users/dav/Comp2010Part2/build/classes/comp2010/target/";
+        outputRoot = "/Users/dav/Comp2010Part2/optimised/classes/comp2010/target/";
+        
         Files.walkFileTree(Paths.get(main.inputRoot), main);
     }
 
